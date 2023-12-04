@@ -5,6 +5,7 @@ const User = require('./models/user_models');
 const user_appointment = require('./models/user_appointment');
 const Doctor = require('./models/doctor_models');
 const Doctor_profiles = require('./models/doctor_profiles');
+const appointment_availability = require('./models/appointment_availability_slots')
 const jwt = require('jsonwebtoken');
 const secretKey = 'your-secret-key';
 const app = express();
@@ -170,28 +171,116 @@ function generateBookingID() {
 
   const numericPart = Math.floor(1000 + Math.random() * 9999); // Generate a random 4-digit number
 
-  const bookingID = randomCharacter1 + randomCharacter2 + numericPart;
+  const bookingID = randomCharacter1 + randomCharacter2 + "-" + numericPart;
 
   return bookingID;
 }
-
+///////////////////////////////////////////////////////
+///////////////////////////////////////////////////////
+///////////////////////////////////////////////////////
 app.post('/user_appointment', async (req, res) => {
   // Generate a booking ID
   const bookingID = generateBookingID();
   const appoint_data = req.body
   appoint_data.booking_Id = bookingID;
-  const new_user_appointment = new user_appointment(appoint_data);
-  await new_user_appointment.save();
-  res.status(201).json({ message: 'your appoientment is book!!', Booking_Id:(bookingID) });
-  
+  // check booking count ................
+  async function countDocumentsWithConditions() {
+    try {
+      const conditions = {
+        $and: [
+          { Doctor_phone_no: appoint_data.Doctor_phone_no }, // Condition 1
+          { Date: appoint_data.Date }, // Condition 2
+          { Time: appoint_data.Time }, // Condition 3
+          // Add more conditions as needed
+        ],
+      };
+      const count = await user_appointment.countDocuments(conditions);
+      if (count <= 9) {
+        const remaning = 9 - count
+        // res.status(201).json({ avalable_slot: remaning});
+        const new_user_appointment = new user_appointment(appoint_data);
+        await new_user_appointment.save();
+        res.status(201).json({
+          message: 'your appoientment is book!!',
+          Booking_Id: (bookingID), Time: appoint_data.Time, Date: appoint_data.Date,
+          avalable_slot: remaning
+        });
 
+        const slotdata = {
+          Doctor_phone_no: new_user_appointment.Doctor_phone_no,
+          Time: appoint_data.Time,
+          Date: appoint_data.Date,
+          availabile_slot: remaning
+        };
+
+        const conditions = {
+          $and: [
+            { Doctor_phone_no: new_user_appointment.Doctor_phone_no },
+            { Time: appoint_data.Time },
+            { Date: appoint_data.Date }
+          ]
+        };
+    
+        const result = await appointment_availability.findOne(conditions);
+    
+        if (result) {
+          console.log('Data found:');
+          let result_slot = await appointment_availability.findOneAndUpdate(
+            {
+              $and: [
+                { Doctor_phone_no: new_user_appointment.Doctor_phone_no },
+                { Time: appoint_data.Time },
+                { Date: appoint_data.Date }
+              ]
+            },
+            { $set: { availabile_slot: remaning } },
+            { new: true }
+          );
+    
+          // logic when data is found
+        } else {
+          console.log('Data not found');
+          const resultslot = await appointment_availability.insertMany(slotdata);
+          //logic when data is not found
+        }
+
+      }
+      else {
+        res.status(201).json({ message: 'This slot is full !!' });
+      }
+
+    } catch (err) {
+      console.error('Error counting documents in DB:', err);
+    }
+  }
+  countDocumentsWithConditions();
 });
+//....................................................................
+// booking slot avalable api API for User.................................
+//....................................................................
+
+app.post('/filter_slot', async (req, res) => {
+  const filters = req.body;
+
+  const conditions = {
+    $and: [
+      { Doctor_phone_no: filters.Doctor_phone_no }, // Condition 1
+      { Date: filters.Date }, // Condition 2
+      { Time: filters.Time }, // Condition 3
+      // Add more conditions as needed
+    ],
+  };
+  // // Find documents that match the filter
+  const result = await appointment_availability.findOne(conditions);
+  res.json(result);
+});
+
 //....................................................................
 // booking status update API for User.................................
 //....................................................................
 app.post('/user_appointment_status', async (req, res) => {
   const resBody = req.body;
-  try { 
+  try {
     const newupdate = String(resBody.booking_Id);
     const final_status = String(resBody.status);
     let resData = await user_appointment.findOneAndUpdate({ booking_Id: newupdate }, { $set: { Status: final_status } }, { new: true });
@@ -394,12 +483,12 @@ app.post('/doctor_profile', async (req, res) => {
   const result = await Doctor_profiles.find(filter);
   res.json(result);
   // Access the data inside the result array
-for (const doctor of result) {
-  console.log('Doctor Name:', doctor.Doctor_name);
-  console.log('First_half_time:', doctor.First_half_time[1]);
-  // Access other properties as needed
-}
-  
+  // for (const doctor of result) {
+  //   console.log('Doctor Name:', doctor.Doctor_name);
+  //   console.log('First_half_time:', doctor.First_half_time[1]);
+  //   // Access other properties as needed
+  // }
+
 });
 
 
@@ -493,12 +582,28 @@ app.post('/time_slot_doctor', async (req, res) => {
     res.status(500).json({ message: 'Error updating Time slot', error: error });
   }
 });
- //Time_slot update in  DoctorDB..........................
- //....................................................
-//............................
-//....................................................
+//Time_slot update in  DoctorDB..........................
+//.......................................................
+//.......................................................
+//.......................................................
+app.post('/filter_appointment', async (req, res) => {
+  const filters = req.body;
 
+  const conditions = {
+    $or: [
+      { Doctor_phone_no: filters.Doctor_phone_no },  // Condition 1
+      { Date: filters.Date } // Condition 2
+      // Add more conditions as needed
+    ],
+  };
+  // // Find documents that match the filter
+  const result = await user_appointment.find(conditions);
+  res.json(result);
+});
 
+//.......................................................
+//.......................code ending ....................
+//.......................................................
 
 app.listen(5000, () => {
   console.log('app is runnig is 5000 port')

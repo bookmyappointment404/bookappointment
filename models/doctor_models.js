@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-mongoose.connect('mongodb://127.0.0.1:27017/book_my_appointment', { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect('mongodb://127.0.0.1:27017/book_my_appointment',
+ { useNewUrlParser: true, useUnifiedTopology: true });
 const DoctoreSchema = new mongoose.Schema({
 
     Doctor_name: { type: String, require: true },
